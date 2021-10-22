@@ -33,8 +33,6 @@
 	<script src="js/libs/ammo.wasm.js"></script>
 	<script src="scoreoutputer.min.js"></script>
 	<script src="./build/three.min.js"></script>
-	<script src="./src/EventLister.js"></script>
-	<script src="./src/Drawer.js"></script>
 	<script>
 		// 建構子 ScoreOutputer 接受一個字串，該字串為 csv 的檔案名稱
 		// 以下面範例，檔名就為 "109598105(總分: 6).csv"
@@ -53,7 +51,7 @@
 			so.addChild("在畫面上畫出左眼的邊框", 2, true);
 			so.addChild("複製左眼邊框變化到右眼", 2, true);
 			so.addChild("可選擇當前讀取角色或按鍵選擇上 / 下一隻角色", 1, true);
-			so.addChild("可儲存座標點檔案", 1, false);
+			so.addChild("可儲存座標點檔案", 1, true);
 			so.addChild("回答問題", 2, true);
 
 			//產生自評表，參數如下所示
@@ -92,6 +90,7 @@
 		import { OutlineEffect } from './jsm/effects/OutlineEffect.js';
 		import { MMDLoader } from './jsm/loaders/MMDLoader.js';
 		import { MMDAnimationHelper } from './jsm/animation/MMDAnimationHelper.js';
+		import { ModelPosition } from './src/ModelPosition.js'
 
 		let camera, scene, renderer, effect;
 		let mesh, helper;
@@ -169,12 +168,6 @@
 
 			const loader = new MMDLoader();
 
-			let modelList, modelIndex = 0;
-			$.getJSON("model_list.json", (data) => {
-				modelList = data.modellist;
-				loadModel(modelList[1].location);
-			});
-
 			loader.load(modelFile, function (object) {
 
 				mesh = object;
@@ -212,13 +205,25 @@
 
 			}, onProgress, null);
 
-			function loadModel(modelFile) {
-				loader.load(modelFile, function (object) {
-					scene.remove(mesh);
-					mesh = object;
-					mesh.position.y = - 10;
-					scene.add(mesh);
+
+			let modelList, modelIndex = 0, models = [], currentModel;
+			$.getJSON("model_list.json", (data) => {
+				modelList = data.modellist;
+				modelList.forEach(model => {
+					models.push(new ModelPosition(model.location))
 				});
+				currentModel = models[0]
+			});
+
+			function changeModel() {
+				currentModel.HidenLines(scene);
+				scene.remove(mesh);
+
+				currentModel = models[modelIndex];
+				currentModel.ShowLines(scene);
+				mesh = currentModel.getMesh();
+				mesh.position.y = - 10;
+				scene.add(mesh);
 			}
 
 			//EventListeners
@@ -244,25 +249,46 @@
 						drawingDirection = 3;
 						break;
 					case "q":
-						CopyToLeft(parent);
+						currentModel.CopyToLeft(parent);
 						break;
 					case "a":
 						modelIndex--;
 						if (modelIndex < 0) modelIndex = modelList.length - 1;
-						loadModel(modelList[modelIndex].location);
+						changeModel()
 						break;
 					case "d":
 						modelIndex++;
 						if (modelIndex > modelList.length - 1) modelIndex = 0;
-						loadModel(modelList[modelIndex].location);
+						changeModel()
+						break;
+					case "s":
+						let saveData = [];
+						models.forEach(model => {
+							saveData.push(model.GetPoints());
+						});
+						funDownload(JSON.stringify(saveData), "model_locations.json")
+
 						break;
 					default:
 						break;
 				}
 			}
 
+			var funDownload = function (content, filename) {
+				var eleLink = document.createElement('a');
+				eleLink.download = filename;
+				eleLink.style.display = 'none';
+				var blob = new Blob([content]);
+				eleLink.href = URL.createObjectURL(blob);
+				document.body.appendChild(eleLink);
+				eleLink.click();
+				document.body.removeChild(eleLink);
+			};
+
 			function DrawLine(x, y, parent) {
-				CreateLine(x, y, parent, drawingDirection)
+				if(drawingDirection == null) return;
+				currentModel.CreateLine(x, y, parent, drawingDirection);
+				drawingDirection = null;
 			}
 
 			function DrawerLineOnParent(e) {
